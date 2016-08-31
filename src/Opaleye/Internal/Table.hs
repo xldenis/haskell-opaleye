@@ -95,10 +95,6 @@ runColumnMaker :: TM.ColumnMaker tablecolumns columns
                   -> (columns, [(HPQ.Symbol, HPQ.PrimExpr)])
 runColumnMaker cm tag tableCols = PM.run (TM.runColumnMaker cm f tableCols) where
   f = PM.extractAttrPE mkName tag
-  -- The non-AttrExpr PrimExprs are not created by 'makeView' or a
-  -- 'ViewColumnMaker' so could only arise from an fmap (if we
-  -- implemented a Functor instance) or a direct manipulation of the
-  -- tablecols contained in the View (which would be naughty)
   mkName pe i = (++ i) $ case pe of
     HPQ.BaseTableAttrExpr columnName -> columnName
     HPQ.CompositeExpr columnExpr fieldName -> mkName columnExpr i ++ fieldName
