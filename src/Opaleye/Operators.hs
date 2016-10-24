@@ -1,14 +1,15 @@
 {-# LANGUAGE Arrows #-}
 {-# LANGUAGE FlexibleContexts #-}
 
--- | Operators on 'Column's.  Numeric 'Column' types are instances of
--- 'Num', so you can use '*', '/', '+', '-' on them.
+-- | Operators on 'Column's.  Please note that numeric 'Column' types
+-- are instances of 'Num', so you can use '*', '/', '+', '-' on them.
 
 module Opaleye.Operators (module Opaleye.Operators,
                           (O..&&)) where
 
 import qualified Control.Arrow as A
 import qualified Data.Foldable as F
+import qualified Data.List.NonEmpty as NEL
 
 import           Opaleye.Internal.Column (Column(Column), unsafeCase_,
                                           unsafeIfThenElse, unsafeGt)
@@ -38,22 +39,19 @@ restrict = QueryArr f where
 {-| Filter a 'QueryArr' to only those rows where the given condition
 holds.  This is the 'QueryArr' equivalent of 'Prelude.filter' from the
 'Prelude'.  You would typically use 'keepWhen' if you want to use a
-"point free" style.-}
+\"point free\" style.-}
 keepWhen :: (a -> Column T.PGBool) -> QueryArr a a
 keepWhen p = proc a -> do
   restrict  -< p a
   A.returnA -< a
 
-doubleOfInt :: Column T.PGInt4 -> Column T.PGFloat8
-doubleOfInt (Column e) = Column (HPQ.CastExpr "float8" e)
-
 infix 4 .==
 (.==) :: Column a -> Column a -> Column T.PGBool
-(.==) = C.binOp HPQ.OpEq
+(.==) = C.binOp (HPQ.:==)
 
 infix 4 ./=
 (./=) :: Column a -> Column a -> Column T.PGBool
-(./=) = C.binOp HPQ.OpNotEq
+(./=) = C.binOp (HPQ.:<>)
 
 infix 4 .===
 -- | A polymorphic equality operator that works for all types that you
@@ -75,18 +73,18 @@ infix 4 .>
 
 infix 4 .<
 (.<) :: Ord.PGOrd a => Column a -> Column a -> Column T.PGBool
-(.<) = C.binOp HPQ.OpLt
+(.<) = C.binOp (HPQ.:<)
 
 infix 4 .<=
 (.<=) :: Ord.PGOrd a => Column a -> Column a -> Column T.PGBool
-(.<=) = C.binOp HPQ.OpLtEq
+(.<=) = C.binOp (HPQ.:<=)
 
 infix 4 .>=
 (.>=) :: Ord.PGOrd a => Column a -> Column a -> Column T.PGBool
-(.>=) = C.binOp HPQ.OpGtEq
+(.>=) = C.binOp (HPQ.:>=)
 
 quot_ :: C.PGIntegral a => Column a -> Column a -> Column a
-quot_ = C.binOp HPQ.OpDiv
+quot_ = C.binOp (HPQ.:/)
 
 rem_ :: C.PGIntegral a => Column a -> Column a -> Column a
 rem_ = C.binOp HPQ.OpMod
@@ -98,23 +96,33 @@ ifThenElse :: Column T.PGBool -> Column a -> Column a -> Column a
 ifThenElse = unsafeIfThenElse
 
 infixr 2 .||
+
+-- | Boolean or
 (.||) :: Column T.PGBool -> Column T.PGBool -> Column T.PGBool
 (.||) = C.binOp HPQ.OpOr
 
 not :: Column T.PGBool -> Column T.PGBool
 not = C.unOp HPQ.OpNot
 
+-- | Concatenate 'Column' 'T.PGText'
 (.++) :: Column T.PGText -> Column T.PGText -> Column T.PGText
-(.++) = C.binOp HPQ.OpCat
+(.++) = C.binOp (HPQ.:||)
 
+-- | To lowercase
 lower :: Column T.PGText -> Column T.PGText
 lower = C.unOp HPQ.OpLower
 
+-- | To uppercase
 upper :: Column T.PGText -> Column T.PGText
 upper = C.unOp HPQ.OpUpper
 
+-- | Postgres @LIKE@ operator
 like :: Column T.PGText -> Column T.PGText -> Column T.PGBool
 like = C.binOp HPQ.OpLike
+
+-- | Postgres @ILIKE@ operator
+ilike :: Column T.PGText -> Column T.PGText -> Column T.PGBool
+ilike = C.binOp HPQ.OpILike
 
 charLength :: C.PGString a => Column a -> Column Int
 charLength (Column e) = Column (HPQ.FunExpr "char_length" [e])
@@ -123,8 +131,15 @@ charLength (Column e) = Column (HPQ.FunExpr "char_length" [e])
 ors :: F.Foldable f => f (Column T.PGBool) -> Column T.PGBool
 ors = F.foldl' (.||) (T.pgBool False)
 
+-- | 'in_' is designed to be used in prefix form.
+--
+-- 'in_' @validProducts@ @product@ checks whether @product@ is a valid
+-- product.  'in_' @validProducts@ is a function which checks whether
+-- a product is a valid product.
 in_ :: (Functor f, F.Foldable f) => f (Column a) -> Column a -> Column T.PGBool
-in_ hs w = ors . fmap (w .==) $ hs
+in_ fcas (Column a) = Column $ case NEL.nonEmpty (F.toList fcas) of
+   Nothing -> HPQ.ConstExpr (HPQ.BoolLit False)
+   Just xs -> HPQ.BinExpr HPQ.OpIn a (HPQ.ListExpr (fmap C.unColumn xs))
 
 -- | True if the first argument occurs amongst the rows of the second,
 -- false otherwise.
@@ -148,7 +163,7 @@ inQuery c q = qj'
         qj = Join.leftJoin (A.arr (const 1))
                            (Distinct.distinct q')
                            (uncurry (.==))
-                          
+
         -- Check whether it is 'NULL'
         qj' :: Query (Column T.PGBool)
         qj' = A.arr (Opaleye.Operators.not
@@ -169,3 +184,83 @@ arrayPrepend (Column e) (Column es) = Column (HPQ.FunExpr "array_prepend" [e, es
 
 singletonArray :: T.IsSqlType a => Column a -> Column (T.PGArray a)
 singletonArray x = arrayPrepend x emptyArray
+
+-- | Class of Postgres types that represent json values.
+--
+-- Used to overload functions and operators that work on both 'T.PGJson' and 'T.PGJsonb'.
+--
+-- Warning: making additional instances of this class can lead to broken code!
+class PGIsJson a
+
+instance PGIsJson T.PGJson
+instance PGIsJson T.PGJsonb
+
+-- | Class of Postgres types that can be used to index json values.
+--
+-- Warning: making additional instances of this class can lead to broken code!
+class PGJsonIndex a
+
+instance PGJsonIndex T.PGInt4
+instance PGJsonIndex T.PGInt8
+instance PGJsonIndex T.PGText
+
+-- | Get JSON object field by key.
+infixl 8 .->
+(.->) :: (PGIsJson a, PGJsonIndex k)
+      => Column (C.Nullable a) -- ^
+      -> Column k -- ^ key or index
+      -> Column (C.Nullable a)
+(.->) = C.binOp (HPQ.:->)
+
+-- | Get JSON object field as text.
+infixl 8 .->>
+(.->>) :: (PGIsJson a, PGJsonIndex k)
+       => Column (C.Nullable a) -- ^
+       -> Column k -- ^ key or index
+       -> Column (C.Nullable T.PGText)
+(.->>) = C.binOp (HPQ.:->>)
+
+-- | Get JSON object at specified path.
+infixl 8 .#>
+(.#>) :: (PGIsJson a)
+      => Column (C.Nullable a) -- ^
+      -> Column (T.PGArray T.PGText) -- ^ path
+      -> Column (C.Nullable a)
+(.#>) = C.binOp (HPQ.:#>)
+
+-- | Get JSON object at specified path as text.
+infixl 8 .#>>
+(.#>>) :: (PGIsJson a)
+       => Column (C.Nullable a) -- ^
+       -> Column (T.PGArray T.PGText) -- ^ path
+       -> Column (C.Nullable T.PGText)
+(.#>>) = C.binOp (HPQ.:#>>)
+
+-- | Does the left JSON value contain within it the right value?
+infix 4 .@>
+(.@>) :: Column T.PGJsonb -> Column T.PGJsonb -> Column T.PGBool
+(.@>) = C.binOp (HPQ.:@>)
+
+-- | Is the left JSON value contained within the right value?
+infix 4 .<@
+(.<@) :: Column T.PGJsonb -> Column T.PGJsonb -> Column T.PGBool
+(.<@) = C.binOp (HPQ.:<@)
+
+-- | Does the key/element string exist within the JSON value?
+infix 4 .?
+(.?) :: Column T.PGJsonb -> Column T.PGText -> Column T.PGBool
+(.?) = C.binOp (HPQ.:?)
+
+-- | Do any of these key/element strings exist?
+infix 4 .?|
+(.?|) :: Column T.PGJsonb -> Column (T.PGArray T.PGText) -> Column T.PGBool
+(.?|) = C.binOp (HPQ.:?|)
+
+-- | Do all of these key/element strings exist?
+infix 4 .?&
+(.?&) :: Column T.PGJsonb -> Column (T.PGArray T.PGText) -> Column T.PGBool
+(.?&) = C.binOp (HPQ.:?&)
+
+-- | Cast a 'PGInt4' to a 'PGFloat8'
+doubleOfInt :: Column T.PGInt4 -> Column T.PGFloat8
+doubleOfInt (Column e) = Column (HPQ.CastExpr "float8" e)

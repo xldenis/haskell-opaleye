@@ -4,10 +4,10 @@ import Data.String
 
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as HPQ
 
--- | Numeric 'Column' types are instances of 'Num', so you can use
--- '*', '/', '+', '-' on them.
 newtype Column a = Column HPQ.PrimExpr deriving Show
 
+-- | Only used within a 'Column', to indicate that it can take null
+-- values.
 data Nullable a = Nullable
 
 unColumn :: Column a -> HPQ.PrimExpr
@@ -17,10 +17,15 @@ unColumn (Column e) = e
 unsafeCoerce :: Column a -> Column b
 unsafeCoerce = unsafeCoerceColumn
 
+-- | Treat a 'Column' as though it were of a different type.  If such
+-- a treatment is not valid then Postgres may fail with an error at
+-- SQL run time.
 unsafeCoerceColumn :: Column a -> Column b
 unsafeCoerceColumn (Column e) = Column e
 
--- | Cast a column to any other type. This is safe for some conversions such as uuid to text.
+-- | Cast a column to any other type. Implements Postgres's @::@ or
+-- @CAST( ... AS ... )@ operations.  This is safe for some
+-- conversions, such as uuid to text.
 unsafeCast :: String -> Column a -> Column b
 unsafeCast = mapColumn . HPQ.CastExpr
   where
@@ -46,19 +51,19 @@ unsafeIfThenElse :: Column pgBool -> Column a -> Column a -> Column a
 unsafeIfThenElse cond t f = unsafeCase_ [(cond, t)] f
 
 unsafeGt :: Column a -> Column a -> Column pgBool
-unsafeGt = binOp HPQ.OpGt
+unsafeGt = binOp (HPQ.:>)
 
 unsafeEq :: Column a -> Column a -> Column pgBool
-unsafeEq = binOp HPQ.OpEq
+unsafeEq = binOp (HPQ.:==)
 
 class PGNum a where
   pgFromInteger :: Integer -> Column a
 
 instance PGNum a => Num (Column a) where
   fromInteger = pgFromInteger
-  (*) = binOp HPQ.OpMul
-  (+) = binOp HPQ.OpPlus
-  (-) = binOp HPQ.OpMinus
+  (*) = binOp (HPQ.:*)
+  (+) = binOp (HPQ.:+)
+  (-) = binOp (HPQ.:-)
 
   abs = unOp HPQ.OpAbs
   negate = unOp HPQ.OpNegate
@@ -72,7 +77,7 @@ class PGFractional a where
 
 instance (PGNum a, PGFractional a) => Fractional (Column a) where
   fromRational = pgFromRational
-  (/) = binOp HPQ.OpDiv
+  (/) = binOp (HPQ.:/)
 
 -- | A dummy typeclass whose instances support integral operations.
 class PGIntegral a

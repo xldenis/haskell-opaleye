@@ -6,6 +6,7 @@ module Opaleye.Internal.HaskellDB.PrimQuery where
 
 import qualified Opaleye.Internal.Tag as T
 import Data.ByteString (ByteString)
+import qualified Data.List.NonEmpty as NEL
 
 type TableName  = String
 type Attribute  = String
@@ -23,7 +24,7 @@ data PrimExpr   = AttrExpr  Symbol
                 | AggrExpr  AggrOp PrimExpr [OrderExpr]
                 | ConstExpr Literal
                 | CaseExpr [(PrimExpr,PrimExpr)] PrimExpr
-                | ListExpr [PrimExpr]
+                | ListExpr (NEL.NonEmpty PrimExpr)
                 | ParamExpr (Maybe Name) PrimExpr
                 | FunExpr Name [PrimExpr]
                 | CastExpr Name PrimExpr -- ^ Cast an expression to a given type.
@@ -45,15 +46,18 @@ data Literal = NullLit
              | OtherLit String       -- ^ used for hacking in custom SQL
                deriving (Read,Show)
 
-data BinOp      = OpEq | OpLt | OpLtEq | OpGt | OpGtEq | OpNotEq
+data BinOp      = (:==) | (:<) | (:<=) | (:>) | (:>=) | (:<>)
                 | OpAnd | OpOr
-                | OpLike | OpIn
+                | OpLike | OpILike | OpIn
                 | OpOther String
 
-                | OpCat
-                | OpPlus | OpMinus | OpMul | OpDiv | OpMod
-                | OpBitNot | OpBitAnd | OpBitOr | OpBitXor
-                | OpAsg | OpAtTimeZone
+                | (:||)
+                | (:+) | (:-) | (:*) | (:/) | OpMod
+                | (:~) | (:&) | (:|) | (:^)
+                | (:=) | OpAtTimeZone
+
+                | (:->) | (:->>) | (:#>) | (:#>>)
+                | (:@>) | (:<@) | (:?) | (:?|) | (:?&)
                 deriving (Show,Read)
 
 data UnOp = OpNot

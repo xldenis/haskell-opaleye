@@ -46,72 +46,89 @@ import           Data.Int (Int64)
 import           Data.String (fromString)
 import qualified Data.List.NonEmpty as NEL
 
--- | Returns the number of rows inserted
---
--- This will be deprecated in a future release.  Use 'runInsertMany' instead.
-runInsert :: PGS.Connection -> T.Table columns columns' -> columns -> IO Int64
-runInsert conn = PGS.execute_ conn . fromString .: arrangeInsertSql
-
--- | Returns the number of rows inserted
+-- | Insert rows into a table
 runInsertMany :: PGS.Connection
+              -- ^
               -> T.Table columns columns'
+              -- ^ Table to insert into
               -> [columns]
+              -- ^ Rows to insert
               -> IO Int64
+              -- ^ Number of rows inserted
 runInsertMany conn table columns = case NEL.nonEmpty columns of
   -- Inserting the empty list is just the same as returning 0
   Nothing       -> return 0
   Just columns' -> (PGS.execute_ conn . fromString .: arrangeInsertManySql) table columns'
 
--- | @runInsertReturning@'s use of the 'D.Default' typeclass means that the
--- compiler will have trouble inferring types.  It is strongly
--- recommended that you provide full type signatures when using
--- @runInsertReturning@.
+-- | Insert rows into a table and return a function of the inserted rows
 --
--- This will be deprecated in a future release.  Use
--- 'runInsertManyReturning' instead.
-runInsertReturning :: (D.Default RQ.QueryRunner returned haskells)
-                   => PGS.Connection
-                   -> T.Table columnsW columnsR
-                   -> columnsW
-                   -> (columnsR -> returned)
-                   -> IO [haskells]
-runInsertReturning = runInsertReturningExplicit D.def
-
--- | @runInsertManyReturning@'s use of the 'D.Default' typeclass means that the
+-- @runInsertManyReturning@'s use of the 'D.Default' typeclass means that the
 -- compiler will have trouble inferring types.  It is strongly
 -- recommended that you provide full type signatures when using
 -- @runInsertManyReturning@.
 runInsertManyReturning :: (D.Default RQ.QueryRunner returned haskells)
                        => PGS.Connection
+                       -- ^
                        -> T.Table columnsW columnsR
+                       -- ^ Table to insert into
                        -> [columnsW]
+                       -- ^ Rows to insert
                        -> (columnsR -> returned)
+                       -- ^ Function @f@ to apply to the inserted rows
                        -> IO [haskells]
+                       -- ^ Returned rows after @f@ has been applied
 runInsertManyReturning = runInsertManyReturningExplicit D.def
 
--- | Where the predicate is true, update rows using the supplied
--- function.
-runUpdate :: PGS.Connection -> T.Table columnsW columnsR
-          -> (columnsR -> columnsW) -> (columnsR -> Column PGBool)
+-- | Update rows in a table
+runUpdate :: PGS.Connection
+          -> T.Table columnsW columnsR
+          -- ^ Table to update
+          -> (columnsR -> columnsW)
+          -- ^ Update function to apply to chosen rows
+          -> (columnsR -> Column PGBool)
+          -- ^ Predicate function @f@ to choose which rows to update.
+          -- 'runUpdate' will update rows for which @f@ returns @TRUE@
+          -- and leave unchanged rows for which @f@ returns @FALSE@.
           -> IO Int64
+          -- ^ The number of rows updated
 runUpdate conn = PGS.execute_ conn . fromString .:. arrangeUpdateSql
 
--- | @runUpdateReturning@'s use of the 'D.Default' typeclass means
+
+-- | Update rows in a table and return a function of the updated rows
+--
+-- @runUpdateReturning@'s use of the 'D.Default' typeclass means
 -- that the compiler will have trouble inferring types.  It is
 -- strongly recommended that you provide full type signatures when
 -- using @runInsertReturning@.
 runUpdateReturning :: (D.Default RQ.QueryRunner returned haskells)
                    => PGS.Connection
+                   -- ^
                    -> T.Table columnsW columnsR
+                   -- ^ Table to update
                    -> (columnsR -> columnsW)
+                   -- ^ Update function to apply to chosen rows
                    -> (columnsR -> Column PGBool)
+                   -- ^ Predicate function @f@ to choose which rows to
+                   -- update.  'runUpdate' will update rows for which
+                   -- @f@ returns @TRUE@ and leave unchanged rows for
+                   -- which @f@ returns @FALSE@.
                    -> (columnsR -> returned)
+                   -- ^ Functon @g@ to apply to the updated rows
                    -> IO [haskells]
+                   -- ^ Returned rows after @g@ has been applied
 runUpdateReturning = runUpdateReturningExplicit D.def
 
--- | Delete rows where the predicate is true.
-runDelete :: PGS.Connection -> T.Table a columnsR -> (columnsR -> Column PGBool)
+-- | Delete rows from a table
+runDelete :: PGS.Connection
+          -- ^
+          -> T.Table a columnsR
+          -- ^ Table to delete rows from
+          -> (columnsR -> Column PGBool)
+          -- ^ Predicate function @f@ to choose which rows to delete.
+          -- 'runDelete' will delete rows for which @f@ returns @TRUE@
+          -- and leave unchanged rows for which @f@ returns @FALSE@.
           -> IO Int64
+          -- ^ The number of rows deleted
 runDelete conn = PGS.execute_ conn . fromString .: arrangeDeleteSql
 
 -- | You probably don't need this, but can just use
@@ -166,6 +183,27 @@ runUpdateReturningExplicit qr conn t update cond r =
   where IRQ.QueryRunner u _ _ = qr
         parser = IRQ.prepareRowParser qr (r v)
         TI.Table _ (TI.TableProperties _ (TI.View v)) = t
+
+-- | Returns the number of rows inserted
+--
+-- This will be deprecated in a future release.  Use 'runInsertMany' instead.
+runInsert :: PGS.Connection -> T.Table columns columns' -> columns -> IO Int64
+runInsert conn = PGS.execute_ conn . fromString .: arrangeInsertSql
+
+-- | @runInsertReturning@'s use of the 'D.Default' typeclass means that the
+-- compiler will have trouble inferring types.  It is strongly
+-- recommended that you provide full type signatures when using
+-- @runInsertReturning@.
+--
+-- This will be deprecated in a future release.  Use
+-- 'runInsertManyReturning' instead.
+runInsertReturning :: (D.Default RQ.QueryRunner returned haskells)
+                   => PGS.Connection
+                   -> T.Table columnsW columnsR
+                   -> columnsW
+                   -> (columnsR -> returned)
+                   -> IO [haskells]
+runInsertReturning = runInsertReturningExplicit D.def
 
 -- | For internal use only.  Do not use.  Will be removed in a
 -- subsequent release.
