@@ -1,7 +1,7 @@
 {-# LANGUAGE Arrows #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
-
+{-# LANGUAGE DeriveGeneric #-}
 module Main where
 
 import qualified QuickCheck
@@ -20,6 +20,7 @@ import           Data.Monoid ((<>))
 import qualified Data.String as String
 import qualified Data.Time   as Time
 import qualified Data.Aeson as Json
+import qualified Data.Yaml  as Yaml
 import qualified Data.Text as T
 
 import qualified System.Exit as Exit
@@ -29,27 +30,39 @@ import           Control.Applicative ((<$>), (<*>))
 import qualified Control.Applicative as A
 import qualified Control.Arrow as Arr
 import           Control.Arrow ((&&&), (***), (<<<), (>>>))
+import           Control.Exception.Base (throw)
 
 import           GHC.Int (Int64)
-
+import           GHC.Word  (Word16)
+import           GHC.Generics
 -- { Set your test database info here.  Then invoke the 'main'
 --   function to run the tests, or just use 'cabal test'.  The test
 --   database must already exist and the test user must have
 --   permissions to modify it.
 
-connectInfo :: PGS.ConnectInfo
-connectInfo =  PGS.ConnectInfo { PGS.connectHost = "localhost"
-                               , PGS.connectPort = 25433
-                               , PGS.connectUser = "tom"
-                               , PGS.connectPassword = "tom"
-                               , PGS.connectDatabase = "opaleye_test" }
+data Configuration = Configuration
+                   { connectHost :: String
+                   , connectPort :: GHC.Word.Word16
+                   , connectUser :: String
+                   , connectPassword :: String
+                   , connectDatabase :: String
+                   } deriving (Generic)
 
-connectInfoTravis :: PGS.ConnectInfo
-connectInfoTravis =  PGS.ConnectInfo { PGS.connectHost = "localhost"
-                                     , PGS.connectPort = 5432
-                                     , PGS.connectUser = "postgres"
-                                     , PGS.connectPassword = ""
-                                     , PGS.connectDatabase = "opaleye_test" }
+instance Yaml.FromJSON Configuration
+
+config2ConnInfo :: Configuration -> PGS.ConnectInfo
+config2ConnInfo c = PGS.ConnectInfo { PGS.connectHost = connectHost c
+                                    , PGS.connectPort = connectPort c
+                                    , PGS.connectUser = connectUser c
+                                    , PGS.connectPassword = connectPassword c
+                                    , PGS.connectDatabase = connectDatabase c
+                                    }
+
+connectInfo :: IO (Either Yaml.ParseException Configuration)
+connectInfo = Yaml.decodeFileEither "config.yml"
+
+connectInfoTravis :: IO (Either Yaml.ParseException Configuration)
+connectInfoTravis = Yaml.decodeFileEither "config.travis.yml"
 
 -- }
 
@@ -892,9 +905,11 @@ main :: IO ()
 main = do
   travis' <- travis
 
-  let connectInfo' = if travis' then connectInfoTravis else connectInfo
+  connectInfo' <- if travis' then connectInfoTravis else connectInfo
 
-  conn <- PGS.connect connectInfo'
+  conn <- case connectInfo' of
+    Right info -> PGS.connect (config2ConnInfo info)
+    Left err -> throw err
 
   dropAndCreateDB conn
 
