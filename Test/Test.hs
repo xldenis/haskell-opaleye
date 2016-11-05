@@ -854,11 +854,6 @@ testJsonbContainsAll = testG q (== [True])
   where q = table9Q >>> proc c1 -> do
               Arr.returnA -< c1 O..?& O.pgArray O.pgStrictText ["a", "b", "c"]
 
-testRange :: Test
-testRange = testG (A.pure $ O.pgRange O.pgInt4 (R.Inclusive 2) (R.Exclusive 3)) (== [range])
-  where range :: R.PGRange Int
-        range = R.PGRange (R.Inclusive 2) (R.Exclusive 3)
-
 testRangeOverlap :: Test
 testRangeOverlap = testG q (== [True])
   where range :: Int -> Int -> Column (O.PGRange O.PGInt4)

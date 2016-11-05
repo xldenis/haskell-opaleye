@@ -192,7 +192,6 @@ instance IsRangeType a => IsSqlType (PGRange a) where
 
 class IsSqlType pgType => IsRangeType pgType where
   showRangeType :: proxy pgType -> String
-  showRangeType proxy = showPGType proxy ++ "range"
 
 instance IsRangeType PGInt4 where
   showRangeType = showPGType
