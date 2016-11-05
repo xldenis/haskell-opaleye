@@ -855,8 +855,9 @@ testJsonbContainsAll = testG q (== [True])
               Arr.returnA -< c1 O..?& O.pgArray O.pgStrictText ["a", "b", "c"]
 
 testRange :: Test
-testRange = testG (A.pure $ O.pgRange O.pgDouble (R.Inclusive (2.0 :: Double)) (R.Exclusive 2.0)) (== [range])
-  where range = R.PGRange (R.Inclusive (2.0 :: Double)) (R.Exclusive 2.0)
+testRange = testG (A.pure $ O.pgRange O.pgInt4 (R.Inclusive 2) (R.Exclusive 3)) (== [range])
+  where range :: R.PGRange Int
+        range = R.PGRange (R.Inclusive 2) (R.Exclusive 3)
 
 testRangeOverlap :: Test
 testRangeOverlap = testG q (== [True])
@@ -890,9 +891,9 @@ testRangeLeftExtension = testG q (== [True])
 
 testRangeAdjacency :: Test
 testRangeAdjacency = testG q (== [True])
-  where range :: Double -> Double -> Column (O.PGRange O.PGFloat8)
-        range a b = O.pgRange O.pgDouble (R.Inclusive a) (R.Inclusive b)
-        q = A.pure $ (range 1.1 2.2) O..-|- (range 2.2 3.3)
+  where range :: Int -> Int -> Column (O.PGRange O.PGInt4)
+        range a b = O.pgRange O.pgInt4 (R.Inclusive a) (R.Inclusive b)
+        q = A.pure $ (range 1 2) O..-|- (range 2 3)
 
 allTests :: [Test]
 allTests = [testSelect, testProduct, testRestrict, testNum, testDiv, testCase,

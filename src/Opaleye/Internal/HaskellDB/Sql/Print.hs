@@ -118,8 +118,8 @@ ppRangeBound False (Inclusive a) = text "'[" <> ppSqlExpr a
 ppRangeBound False (Exclusive a) = text "'(" <> ppSqlExpr a
 ppRangeBound False (PosInfinity) = text "'(infinity"
 ppRangeBound False (NegInfinity) = text "'(-infinity"
-ppRangeBound True  (Inclusive a) = text "']" <> ppSqlExpr a
-ppRangeBound True  (Exclusive a) = text "')" <> ppSqlExpr a
+ppRangeBound True  (Inclusive a) = ppSqlExpr a <> text "]'"
+ppRangeBound True  (Exclusive a) = ppSqlExpr a <> text ")'"
 ppRangeBound True  (PosInfinity) = text "infinity)'"
 ppRangeBound True  (NegInfinity) = text "-infinity)'"
 
